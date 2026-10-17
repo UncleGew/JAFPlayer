@@ -140,7 +140,7 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
         // or older than the chosen hours). It reads one small file and touches no database.
         appScope.launch {
             kotlinx.coroutines.delay(SPORTS_START_DELAY_MS)
-            runCatching { GlobalContext.get().get<tv.own.owntv.core.sports.SportsRepository>().appStarted() }
+            runCatching<Unit> { GlobalContext.get().get<tv.own.owntv.core.sports.SportsRepository>().appStarted() }
         }
         // NOTE: cold start does ZERO heavy DB work. Index + ANALYZE maintenance is piggy-backed onto the
         // operation that actually changes the data — ImportFinalizer.finalize() for normal re-syncs, the

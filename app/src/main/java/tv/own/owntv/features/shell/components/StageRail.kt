@@ -307,9 +307,12 @@ private fun RailEdgeGlow(modifier: Modifier) {
 /** The mark (50), with the wordmark beside it when the rail is open (`.brandrow`, 0 10 18 padding). */
 @Composable
 private fun ColumnScope.RailBrand(open: Boolean) {
-    val icon = rememberAppliedIcon()
     if (!open) {
-        BrandMark(icon, 50.mpx, Modifier.padding(bottom = 12.mpx))
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(R.drawable.jafplayer_logo),
+            contentDescription = stringResource(R.string.app_name),
+            modifier = Modifier.size(50.mpx).padding(bottom = 12.mpx),
+        )
         return
     }
     Row(
@@ -317,9 +320,17 @@ private fun ColumnScope.RailBrand(open: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(14.mpx),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BrandMark(icon, 50.mpx)
-        // The #227 wordmark, 130 wide (`.brandrow`, `wordmarkC()`).
-        Wordmark(130.mpx)
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(R.drawable.jafplayer_logo),
+            contentDescription = stringResource(R.string.app_name),
+            modifier = Modifier.size(50.mpx),
+        )
+        Text(
+            text = stringResource(R.string.app_name),
+            color = Color(0xFFE3BC5C),
+            fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp),
+            maxLines = 1,
+        )
     }
 }
 
