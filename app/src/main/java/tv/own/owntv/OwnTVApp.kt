@@ -127,8 +127,8 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
             settings = GlobalContext.get().get(),
             archiveStore = GlobalContext.get().get(),
         )
-        // The Stage UI's own defaults, once per install (owner, 2026-10-02): Docked · Compact rail, glass
-        // on at 50%, the Stage background; Movies & Series keep an update's layout.
+        // JAFPlayer's one-time TV appearance defaults: Docked / Normal navigation,
+        // glass effects off, and Plain background. Preserve existing Movies & Series layouts.
         appScope.launch {
             runCatching {
                 GlobalContext.get().get<tv.own.owntv.core.settings.SettingsRepository>().applyStageDefaults(
