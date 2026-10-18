@@ -150,9 +150,10 @@ class ShellViewModel(
     val sourceSummary: StateFlow<String?> = settings.activeProfileId
         .flatMapLatest { pid -> if (pid < 0) flowOf(emptyList<tv.own.owntv.core.database.entity.SourceEntity>()) else sourceRepository.observeSources(pid) }
         .combine(settings.defaultSourceId) { sources, defaultId ->
+            val enabledSources = sources.filter { it.enabled }
             when {
-                sources.isEmpty() -> null
-                else -> (sources.firstOrNull { it.id == defaultId } ?: sources.first()).name
+                enabledSources.isEmpty() -> null
+                else -> (enabledSources.firstOrNull { it.id == defaultId } ?: enabledSources.first()).name
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -160,6 +161,7 @@ class ShellViewModel(
     /** The active profile's playlists, for the top-bar quick switcher (empty when the profile has none). */
     val playlists: StateFlow<List<tv.own.owntv.core.database.entity.SourceEntity>> = settings.activeProfileId
         .flatMapLatest { pid -> if (pid < 0) flowOf(emptyList()) else sourceRepository.observeSources(pid) }
+        .map { sources -> sources.filter { it.enabled } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** The chosen active-playlist filter: -1 = All playlists (merged view), else a single playlist id. */

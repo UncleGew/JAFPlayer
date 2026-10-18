@@ -1154,6 +1154,16 @@ class SettingsViewModel(
         }
     }
 
+    fun setSourceEnabled(id: Long, enabled: Boolean) {
+        viewModelScope.launch {
+            val source = sourceDao.getById(id) ?: return@launch
+            if (source.enabled == enabled) return@launch
+            sourceDao.setEnabled(id, enabled)
+            if (!enabled) catalogSyncScheduler.cancelSync(id)
+            runCatching { refreshActiveTvHome(allowBrowsableRequest = true, forceRecentLive = true) }
+        }
+    }
+
     fun togglePreferHls(sourceId: Long, preferHls: Boolean) {
         viewModelScope.launch {
             sourceDao.updatePreferHls(sourceId, preferHls)
@@ -1383,11 +1393,13 @@ class SettingsViewModel(
     fun resync(source: SourceEntity, clean: Boolean = false) {
         Log.d(TAG, "resync enqueue sourceId=${source.id} clean=$clean")
         viewModelScope.launch {
+            val current = sourceDao.getById(source.id) ?: return@launch
+            if (!current.enabled) return@launch
             val counts = importFinalizer.contentCounts(source.id)
             catalogSyncScheduler.enqueueSync(
                 source.id,
                 reason = if (clean) "manual_clean_resync" else "manual_resync",
-                contentTypes = SyncContentTypes.enabledOf(source),
+                contentTypes = SyncContentTypes.enabledOf(current),
                 baseItemCount = counts.channels + counts.movies + counts.series,
                 forcePrune = clean,
             )
@@ -1437,10 +1449,17 @@ class SettingsViewModel(
         importer.reset()
     }
 
-    private suspend fun refreshActiveTvHome(allowBrowsableRequest: Boolean = true) {
+    private suspend fun refreshActiveTvHome(
+        allowBrowsableRequest: Boolean = true,
+        forceRecentLive: Boolean = false,
+    ) {
         val pid = profileDao.resolveExistingProfileId(settings.activeProfileId.first()) ?: return
         Log.d(TAG, "refreshActiveTvHome profile=$pid allowBrowsable=$allowBrowsableRequest")
-        launcherIntegrationRepository.refreshProfile(pid, allowBrowsableRequest)
+        launcherIntegrationRepository.refreshProfile(
+            pid,
+            allowBrowsableRequest,
+            forceRecentLive = forceRecentLive,
+        )
     }
 
     // --- Global proxy (Approach 1 — one app-wide HTTP proxy) ---

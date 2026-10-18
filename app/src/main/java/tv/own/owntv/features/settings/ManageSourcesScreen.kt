@@ -313,6 +313,7 @@ fun ManageSourcesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                         keepPanel = source.id == contextId,
                         onFocused = { contextId = source.id; contextIndex = index },
                         onEdit = { contextId = source.id; contextIndex = index; editingSource = source },
+                        onToggleEnabled = { vm.setSourceEnabled(source.id, !source.enabled) },
                         onTest = { contextId = source.id; contextIndex = index; vm.testSource(source) },
                         onResync = { contextId = source.id; contextIndex = index; resyncChoice = source },
                         onCancelSync = { contextId = source.id; contextIndex = index; vm.cancelResync(source) },
@@ -380,6 +381,7 @@ private fun SourceRow(
     keepPanel: Boolean,
     onFocused: () -> Unit,
     onEdit: () -> Unit,
+    onToggleEnabled: () -> Unit,
     onTest: () -> Unit,
     onResync: () -> Unit,
     onCancelSync: () -> Unit,
@@ -407,6 +409,7 @@ private fun SourceRow(
     }.joinToString(sep)
     val status = when {
         isDeleting -> stringResource(R.string.settings_sources_deleting)
+        !source.enabled -> stringResource(R.string.settings_sources_disabled)
         activeSync != null -> resyncProgressPercent(activeSync.baseItemCount, activeSync.totalProcessed)
             ?.let { stringResource(R.string.sync_progress_percent, it) } ?: stringResource(R.string.sync_progress_syncing)
         isDefault -> stringResource(R.string.settings_sources_default)
@@ -415,15 +418,16 @@ private fun SourceRow(
     val back = rowFocus ?: remember { FocusRequester() }
     val actions = if (isDeleting) emptyList() else listOf(
         StageAction(OwnTVIcon.PENCIL, stringResource(R.string.settings_sources_edit), onEdit),
+        StageAction(OwnTVIcon.PLAYLIST, stringResource(if (source.enabled) R.string.settings_sources_disable_playlist else R.string.settings_sources_enable_playlist), onToggleEnabled),
         // "Info", not "Test": the expensive measurement lives behind Re-test inside the popup.
         StageAction(OwnTVIcon.INFO, stringResource(R.string.settings_sources_info), onTest),
-        StageAction(
+        if (source.enabled || syncState.isActive) StageAction(
             OwnTVIcon.REFRESH,
             stringResource(if (syncState.isActive) R.string.settings_sources_cancel else R.string.settings_sources_resync),
             if (syncState.isActive) onCancelSync else onResync,
-        ),
+        ) else null,
         StageAction(OwnTVIcon.TRASH, stringResource(R.string.settings_sources_delete), onDelete, danger = true),
-    )
+    ).filterNotNull()
     StageSettingRow(
         icon = OwnTVIcon.PLAYLIST,
         title = source.name,
