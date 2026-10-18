@@ -6,10 +6,10 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, jafplayer-dev ]
     tags: [ "v*" ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, jafplayer-dev ]
   workflow_dispatch:
 
 permissions:
