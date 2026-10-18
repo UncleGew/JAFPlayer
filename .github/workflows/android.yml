@@ -1,11 +1,9 @@
 name: Android CI
 
-# Three jobs:
-#   verify-pin — core pin bumps ONLY. Seconds, no build. See its own note.
-#   check      — unit tests + lint. Gates the build. Skipped on core pin bumps.
-#   build      — assembles the APK, and publishes a GitHub Release on v* tags. Never runs for a PR,
-#                so PR branches still don't produce APKs (the restriction added in ac33c65 is
-#                unchanged); they only get the test/lint verdict.
+# JAFPlayer Android CI:
+#   check — runs unit tests and lint against our pinned JAFPlayer_Core.
+#   build — builds APKs after checks pass and publishes releases on version tags.
+
 on:
   push:
     branches: [ main ]
@@ -17,81 +15,28 @@ on:
 permissions:
   contents: write   # required so tag builds can create a Release
 
-# Core (tv.own.owntv:core, :player-core) and the mpv engine (tv.own.owntv:libmpv) resolve from OwnTV's
-# public Maven repository, https://ahxn00.github.io/OwnTV_Core/maven — no token, so fork pull requests
-# build exactly like the maintainer's. There is no owntv.corePath here: CI deliberately builds against
-# the PINNED artifact, which is what a release actually ships. Local builds use the composite.
+# JAFPlayer_Core is checked out at a pinned commit for reproducible builds.
+# Gradle uses the local composite Core build for tests and APK generation.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # A "Pin core x.y.z" pull request opened by core's bump-consumers workflow changes exactly two
-  # files and no application code. Running the unit tests, lint and the i18n checks on it re-verifies
-  # this repo's Kotlin, which is byte-identical to main — minutes of runner time that cannot report
-  # anything new. So those jobs step aside for these branches and this one runs instead.
-  #
-  # It also keeps the workflow run itself concluding "success". A run whose every job is skipped
-  # concludes as "skipped", and automerge-core-bump.yml requires success — skip everything and the
-  # pull request would sit open for ever.
-  #
-  # What is actually worth checking on such a pull request is that the numbers agree: seconds, no
-  # build, no Gradle, no Android SDK.
-  verify-pin:
-    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'bump/core-') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: The pin must be core's newest release, and locales.json must match it
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-
-          PIN=$(sed -n 's/^owntvCore = "\(.*\)"$/\1/p' gradle/libs.versions.toml)
-          [ -n "$PIN" ] || { echo "::error::Could not read owntvCore from gradle/libs.versions.toml."; exit 1; }
-
-          # The branch name carries the version too, so a mismatch means the two halves of the bump
-          # disagree about what is being pinned.
-          if [ "$HEAD_BRANCH" != "bump/core-$PIN" ]; then
-            echo "::error::Branch $HEAD_BRANCH does not match the pin $PIN."
-            exit 1
-          fi
-
-          # Core publishes the release only AFTER its tests pass and both artifacts are pushed, so a
-          # release existing is proof the version is real and installable.
-          LATEST=$(gh api repos/ahXN00/OwnTV_Core/releases/latest --jq .tag_name)
-          LATEST="${LATEST#core-}"
-          if [ "$PIN" != "$LATEST" ]; then
-            echo "::error::Pinned $PIN but core's newest release is $LATEST."
-            exit 1
-          fi
-
-          # The other file the bump touches. It is duplicated into every consumer because Gradle
-          # reads it at configure time to build localeFilters, and core's own copy never reaches
-          # here. A stale copy silently strips a language out of the APK with a green build.
-          curl -fsSL -o /tmp/locales.core.json \
-            "https://raw.githubusercontent.com/ahXN00/OwnTV_Core/core-$PIN/tools/i18n/locales.json"
-          if ! diff -u /tmp/locales.core.json tools/i18n/locales.json; then
-            echo "::error::tools/i18n/locales.json differs from core's copy at core-$PIN."
-            exit 1
-          fi
-
-          echo "Pin $PIN is core's newest release, the branch agrees, and locales.json matches."
-
-  # Nothing was checking the unit tests or lint before, so both could rot silently while the APK
-  # kept building. This job is the gate: if it is red, no APK is produced and no release is cut.
+  # Unit tests and lint must pass before an APK is built.
   check:
     # Core pin bumps carry no application code — verify-pin above covers them instead.
-    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'bump/core-')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Checkout JAFPlayer_Core
+        uses: actions/checkout@v7
+        with:
+          repository: UncleGew/JAFPlayer_Core
+          ref: b3b96ee23d73a0fba23b13e061ed4a6bf37147fe
+          path: JAFPlayer_Core
 
       - name: Set up JDK 21
         uses: actions/setup-java@v6
@@ -114,12 +59,12 @@ jobs:
       - name: Unit tests
         run: |
           chmod +x ./gradlew
-          ./gradlew testStandardDebugUnitTest --stacktrace
+          ./gradlew -Powntv.corePath="$GITHUB_WORKSPACE/JAFPlayer_Core" testStandardDebugUnitTest --stacktrace
 
       # abortOnError = true in app/build.gradle.kts, so this fails the job on a lint error.
       - name: Lint
         if: always()   # report both verdicts in one run instead of one failure at a time
-        run: ./gradlew lintStandardDebug --stacktrace
+        run: ./gradlew -Powntv.corePath="$GITHUB_WORKSPACE/JAFPlayer_Core" lintStandardDebug --stacktrace
 
       - name: Upload test and lint reports
         if: always()   # the reports matter most when the step above failed
@@ -134,7 +79,7 @@ jobs:
 
   build:
     needs: check
-    # PRs get the check job only — no APK, no release. Unchanged from ac33c65.
+    # Pull requests run checks only; APK builds run on main, tags, or manual dispatch.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
@@ -145,6 +90,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Checkout JAFPlayer_Core
+        uses: actions/checkout@v7
+        with:
+          repository: UncleGew/JAFPlayer_Core
+          ref: b3b96ee23d73a0fba23b13e061ed4a6bf37147fe
+          path: JAFPlayer_Core
 
       - name: Set up JDK 21
         uses: actions/setup-java@v6
@@ -168,7 +120,7 @@ jobs:
           if [ "$IS_TAG" = "true" ]; then
             NAME="${GITHUB_REF_NAME#v}"                 # tag v1.2.0 -> 1.2.0
             IFS='.' read -r MA MI PA <<< "$NAME"
-            CODE=$(( ${MA:-0} * 10000 + ${MI:-0} * 100 + ${PA:-0} ))   # 1.2.0 -> 10200
+            CODE=$(( 100000 + ${MA:-0} * 10000 + ${MI:-0} * 100 + ${PA:-0} ))   # 1.2.0 -> 110200
             [ "$CODE" -gt 0 ] || CODE=1
           else
             # Dev (non-tag) builds mirror the local-build fallback in app/build.gradle.kts:
@@ -235,7 +187,7 @@ jobs:
           chmod +x ./gradlew
           if [ -n "$KEYSTORE_FILE" ]; then
             echo "Building signed release APKs (both ABI flavors)"
-            ./gradlew assembleRelease --stacktrace
+            ./gradlew -Powntv.corePath="$GITHUB_WORKSPACE/JAFPlayer_Core" assembleRelease --stacktrace
             # Product flavors split the output by flavor subfolder:
             #   standard/release  -> arm (arm64-v8a + armeabi-v7a) — the main download
             #   x86_64/release    -> x86_64 — emulator / rare x86 box
@@ -247,7 +199,7 @@ jobs:
             echo "X86_SRC=$X86_SRC" >> "$GITHUB_ENV"
           else
             echo "Building debug APK"
-            ./gradlew assembleDebug
+            ./gradlew -Powntv.corePath="$GITHUB_WORKSPACE/JAFPlayer_Core" assembleDebug
             # Debug also builds both flavors; standard (arm) is the one most likely to be tested on a
             # real device. Surface it as the primary artifact; x86_64 debug is still in its folder.
             SRC=$(ls app/build/outputs/apk/standard/debug/*.apk | head -n1)
@@ -255,27 +207,27 @@ jobs:
             echo "ARM_SRC=$SRC" >> "$GITHUB_ENV"
           fi
 
-      - name: Name the APK (OwnTV-v<version>)
+      - name: Name the APK (JAFPlayer)
         run: |
           mkdir -p dist
           if [ "$IS_TAG" = "true" ]; then
-            OUT="OwnTV-v${{ steps.ver.outputs.name }}.apk"
+            OUT="JAFPlayer-v${{ steps.ver.outputs.name }}.apk"
           else
-            OUT="OwnTV-dev-${GITHUB_SHA::7}.apk"
+            OUT="JAFPlayer-dev-${GITHUB_SHA::7}.apk"
           fi
           cp "$ARM_SRC" "dist/$OUT"
           echo "APK_OUT=$OUT" >> "$GITHUB_ENV"
           echo "Packaged dist/$OUT (arm: arm64-v8a + armeabi-v7a)"
           # Tag builds also ship a stable-named copy so a fixed URL always serves the latest signed
-          # release: https://github.com/<repo>/releases/latest/download/OwnTV.apk
+          # release: https://github.com/<repo>/releases/latest/download/JAFPlayer.apk
           # (used by the Fire TV Downloader code and any "always-latest" sideload link).
           if [ "$IS_TAG" = "true" ]; then
-            cp "$ARM_SRC" "dist/OwnTV.apk"
+            cp "$ARM_SRC" "dist/JAFPlayer.apk"
             # Separate x86_64 build for emulators / rare Intel boxes. Pinned to the version only —
             # no always-latest copy, since real devices (the Downloader audience) don't need it.
             if [ -n "$X86_SRC" ]; then
-              cp "$X86_SRC" "dist/OwnTV-x86_64-v${{ steps.ver.outputs.name }}.apk"
-              echo "Packaged dist/OwnTV-x86_64-v${{ steps.ver.outputs.name }}.apk"
+              cp "$X86_SRC" "dist/JAFPlayer-x86_64-v${{ steps.ver.outputs.name }}.apk"
+              echo "Packaged dist/JAFPlayer-x86_64-v${{ steps.ver.outputs.name }}.apk"
             fi
           fi
 
@@ -325,11 +277,11 @@ jobs:
         if: env.IS_TAG == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          name: OwnTV ${{ github.ref_name }}
+          name: JAFPlayer ${{ github.ref_name }}
           files: |
             dist/${{ env.APK_OUT }}
-            dist/OwnTV.apk
-            dist/OwnTV-x86_64-v${{ steps.ver.outputs.name }}.apk
+            dist/JAFPlayer.apk
+            dist/JAFPlayer-x86_64-v${{ steps.ver.outputs.name }}.apk
           body_path: dist/RELEASE_NOTES.md
           # Must stay false: it appends GitHub's auto commit/PR list under the body, which buries the
           # short in-app notes the updater dialog shows.
