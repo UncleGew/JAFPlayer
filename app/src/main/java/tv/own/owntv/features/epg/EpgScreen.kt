@@ -207,10 +207,8 @@ fun EpgScreen(
     LaunchedEffect(liveMode, liveSelected) { if (liveMode) vm.setCategoryFilter(liveSelected) }
     LaunchedEffect(Unit) { vm.load() } // reload from DB each time the guide is opened
 
-    // The focused channel plays in the video after the focus settles, as in Live TV.
+    // Keep the already selected channel in the video pane while browsing the guide.
     val effectivePreview = previewEnabled && livePreviewSetting && guidePreview
-    // Switching the Guide's own preview off stops what is already playing, not only the next channel.
-    LaunchedEffect(guidePreview) { if (!guidePreview && previewEnabled) liveVm.stopPreview() }
     LaunchedEffect(previewChannel?.id, effectivePreview, previewArmed) {
         if (!effectivePreview || !previewArmed) return@LaunchedEffect
         val ch = previewChannel ?: return@LaunchedEffect
@@ -268,7 +266,7 @@ fun EpgScreen(
                 row.offset + row.size + step > info.viewportEndOffset -> row.offset + row.size + step - info.viewportEndOffset
                 else -> 0f
             }
-            if (delta != 0f) runCatching { rowListState.scrollBy(delta) }
+            if (delta != 0f && row != null) runCatching { rowListState.scrollBy(delta) }
             if (rowListState.layoutInfo.visibleItemsInfo.none { it.index == i }) runCatching { rowListState.scrollToItem(i) }
             withFrameNanos { }
             runCatching { rowFocus(i).requestFocus() }
@@ -570,7 +568,6 @@ fun EpgScreen(
                                     onFocused = {
                                         focusedRow = index
                                         if (cursorTime !in state.windowStart until state.windowEnd) cursorTime = System.currentTimeMillis()
-                                        liveVm.onChannelFocused(channel)
                                     },
                                     onCursor = { cursorTime = it },
                                     onShow = { p -> selected = channel to p },

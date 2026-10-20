@@ -419,7 +419,7 @@ internal fun liveCategoryEntries(railItems: List<LiveRailItem>, railCounts: Map<
         val parsed = if (item.key is tv.own.owntv.core.live.LiveKey.Folder || item.key is tv.own.owntv.core.live.LiveKey.Custom) ProviderTags.parse(label) else null
         LiveCategoryEntry(
             item = item,
-            label = parsed?.name ?: label,
+            label = parsed?.let { ProviderTags.groupLabel(it, headingCountry = null) } ?: label,
             name = parsed,
             icon = when (item.key) {
                 tv.own.owntv.core.live.LiveKey.Favorites -> OwnTVIcon.FAVORITE
@@ -432,12 +432,10 @@ internal fun liveCategoryEntries(railItems: List<LiveRailItem>, railCounts: Map<
             mark = null,
         )
     }
-    val groupCountry = ProviderTags.sharedCountry(entries.mapNotNull { it.name })
-    // A group keeps its "UK|" unless the heading below says it for every group.
-    val labelled = entries.map { e -> e.name?.let { e.copy(label = ProviderTags.groupLabel(it, groupCountry)) } ?: e }
-    val heading = (if (groupCountry != null) stringResource(R.string.content_live_groups_country, groupCountry) else stringResource(R.string.content_live_groups))
+    // Keep provider category names intact without country-specific group headings.
+    val heading = stringResource(R.string.content_live_groups)
         .uppercase(androidx.compose.ui.text.intl.Locale.current.platformLocale)
-    return labelled to heading
+    return entries to heading
 }
 
 /**

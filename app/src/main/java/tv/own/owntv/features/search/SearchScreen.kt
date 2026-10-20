@@ -209,15 +209,6 @@ fun SearchScreen(
     val activeChannel = active?.channel()?.takeIf { showingResults && (listHasFocus || scheduleHasFocus) }
     val previewOn = previewEnabled && livePreviewSetting
 
-    // A channel shows Live TV's preview: the same guide lookup, and the same 700 ms settle before playing.
-    LaunchedEffect(activeChannel?.id, previewOn) {
-        val ch = activeChannel
-        if (ch == null) { liveVm.stopPreview(); return@LaunchedEffect }
-        liveVm.onChannelFocused(ch)
-        if (!previewOn) return@LaunchedEffect
-        delay(700)
-        liveVm.playPreview(ch)
-    }
     LaunchedEffect(active?.key, showingResults) {
         vm.focusVod(if (!showingResults) null else when (active) { is Entry.Movie -> active.movie; is Entry.Series -> active.series; else -> null })
     }

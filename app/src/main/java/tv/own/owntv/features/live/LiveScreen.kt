@@ -276,6 +276,7 @@ fun LiveScreen(
     // The row a burst of presses is heading for: every press counts from there, not from the row that
     // still has focus, and the newest press cancels the step still in flight.
     var stepTarget by remember { mutableStateOf<Int?>(null) }
+    var highlightedChannelId by remember { mutableStateOf<Long?>(null) }
     var stepJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     fun stepTo(i: Int) {
         stepTarget = i
@@ -527,7 +528,7 @@ fun LiveScreen(
     val categoriesModifier = Modifier
         .onFocusChanged {
             railPaneFocused = it.hasFocus
-            if (it.hasFocus && previewEnabled) vm.stopPreview()
+            // Keep the current stream playing while navigating
             // The sheet closes when focus leaves it (◀ to the rail) — not while its own menus are open,
             // and not on the "unfocused" report every node gets when it first attaches.
             if (it.hasFocus) sheetHadFocus = true
@@ -664,7 +665,7 @@ fun LiveScreen(
                         longPressEnabled = { selectedKey != LiveKey.All },
                         lastIndex = { channels.itemCount - 1 },
                         currentTargetIndex = {
-                            val pc = previewChannel
+                            val pc = channels.itemSnapshotList.items.firstOrNull { it.id == highlightedChannelId } ?: previewChannel
                             if (pc != null) {
                                 val idx = channels.itemSnapshotList.items.indexOfFirst { it.id == pc.id }
                                 if (idx >= 0) idx else effectiveListState.firstVisibleItemIndex
@@ -682,7 +683,7 @@ fun LiveScreen(
                                     if (item != null) {
                                         // The remembered channel is the focus target, so it moves with the jump;
                                         // focus by row number, which holds whatever the row's other requesters are.
-                                        vm.onChannelFocused(item)
+                                        highlightedChannelId = item.id
                                         if (rememberLive) perCategoryChannelIds[selectedKey] = item.id
                                         withFrameNanos { }
                                         runCatching { rowFocus(idx).requestFocus() }
@@ -728,7 +729,7 @@ fun LiveScreen(
                             .weight(1f, fill = false)
                             .width(if (separate) listWidth * (230f / 620f) else listWidth * (456f / 846f))
                             .focusRequester(listSearchFocus)
-                            .onFocusChanged { if (it.hasFocus && previewEnabled) vm.stopPreview() }
+                            .onFocusChanged { }
                             // ◀ Categories from the search field too, as from the rows (not while typing — a search that found nothing here may be in another category).
                             .onPreviewKeyEvent { e ->
                                 if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
@@ -834,7 +835,7 @@ fun LiveScreen(
                                         }
                                     },
                                     onFocus = {
-                                        vm.onChannelFocused(channel)
+                                        highlightedChannelId = channel.id
                                         if (rememberLive) perCategoryChannelIds[selectedKey] = channel.id
                                     },
                                     onClick = {

@@ -47,6 +47,7 @@ data class CustomizeCatRow(
     val providerName: String? = null,
 )
 
+
 enum class CustomizeVisibilityFilter {
     ALL,
     VISIBLE,
@@ -127,10 +128,10 @@ class CustomizeViewModel(
         span.cancel()
     }
 
-    /** Categories of the selected section, in their customized order, including hidden ones. */
-    val rows: StateFlow<List<CustomizeCatRow>> = combine(_section, ctx, _visibilityFilter) { s, c, filter ->
-        Triple(s, c, filter)
-    }.flatMapLatest { (type, c, filter) ->
+    /** Complete category list for bulk operations, independent of the display filter. */
+    val allRows: StateFlow<List<CustomizeCatRow>> = combine(_section, ctx) { type, c ->
+        type to c
+    }.flatMapLatest { (type, c) ->
             if (c.profileId < 0) flowOf(emptyList())
             else {
                 val sourceIds = c.sourceIdsFor(type)
@@ -174,12 +175,16 @@ class CustomizeViewModel(
                         )
                     }
                     val (pinned, rest) = entries.partition { it.key in orderIndex }
-                    (pinned.sortedBy { orderIndex.getValue(it.key) } + rest)
-                        .filter { filter.accepts(it.hidden) }
+                    pinned.sortedBy { orderIndex.getValue(it.key) } + rest
                 }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Filtered display rows; existing range selection and D-pad navigation use this list. */
+    val rows: StateFlow<List<CustomizeCatRow>> = combine(allRows, _visibilityFilter) { all, filter ->
+        all.filter { filter.accepts(it.hidden) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // --- Span selection (shared machinery, see SpanSelector.kt) ---
 
@@ -330,6 +335,24 @@ class CustomizeViewModel(
             }
         }
     }
+
+    /** Bulk-hide or show provider categories in the selected section and playlist scope. */
+    fun setAllProviderCategoriesHidden(hidden: Boolean) {
+        val profileId = ctx.value.profileId
+        val type = _section.value
+        if (profileId < 0) return
+
+        viewModelScope.launch {
+            val sourceIds = ctx.value.sourceIdsFor(type).toSet()
+            val keys = categoryDao.observe(sourceIds.toList(), type).first()
+                .map { CustomizeKeys.category(it) }
+
+            if (keys.isNotEmpty()) {
+                customize.setCategoriesHidden(profileId, type, keys, hidden)
+            }
+        }
+    }
+
 
     fun setCategoryHidden(row: CustomizeCatRow, hidden: Boolean) {
         viewModelScope.launch {

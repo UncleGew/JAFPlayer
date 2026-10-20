@@ -918,10 +918,7 @@ class LiveViewModel(
         _search.value = query
     }
 
-    fun onChannelFocused(channel: ChannelEntity) {
-        _previewArmed.value = true // a real user focus — the in-pane preview may now play
-        _previewChannel.value = channel
-    }
+    // Browsing focus must not change the playing channel.
 
     /** Search's "Go to channel": the list scrolls to [reveal] and focuses it, then calls [revealDone]. */
     private val _reveal = MutableStateFlow<tv.own.owntv.features.search.Reveal?>(null)
@@ -931,8 +928,6 @@ class LiveViewModel(
      *  the rail or the channel is not in it. It becomes the preview, as if the user had walked there. */
     fun revealChannel(channel: ChannelEntity) {
         _search.value = ""
-        _previewArmed.value = true
-        _previewChannel.value = channel
         viewModelScope.launch {
             val c = ctx.first { it.profileId >= 0 }
             val sort = settings.sortLive.first()
@@ -986,7 +981,6 @@ class LiveViewModel(
 
     /** In-pane preview playback (no history) — triggered by the UI after the focus settles. */
     fun playPreview(channel: ChannelEntity) {
-        if (channel.categoryId != null && channel.categoryId in hiddenCategoryIds.value) return
         // Core keeps the preview off a promoted full-screen stream, re-mutes on a re-focus instead of
         // reloading, mints a Stalker link, and holds back on a one-session panel while mpv plays.
         live.preview(channel, muted = !livePreviewAudio.value)
@@ -1541,6 +1535,7 @@ class LiveViewModel(
         // carries a licence URL, so the external player would open it and fail immediately.
         if (externalPlayerOn.value && channel.drmConfig == null) { playExternal(channel); return }
         _previewChannel.value = channel
+        _previewArmed.value = true // intentional tune; browsing focus must never arm playback
         clearTimeshift() // normal live = not timeshifted
         _catchupActive.value = false // tuning live ends any archive playback the HUD was showing
         // Core routes it (DRM, the pin, a learned panel refusal, the playlist, the setting), arms the
@@ -1925,6 +1920,7 @@ class LiveViewModel(
 
     fun stopPreview() {
         live.stop() // both engines, every watcher and the give-up alarm, and the reconnect link
+        _previewArmed.value = false
         _previewChannel.value = null
     }
 

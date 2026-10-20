@@ -69,11 +69,15 @@ import tv.own.owntv.core.customize.SpanSelector
  * Optionally locked behind a PIN (set from this screen's top-right) so hidden items can't be
  * unhidden by someone else — the PIN is asked on every entry.
  */
+private enum class CategoryBulkAction { HIDE_ALL, SHOW_ALL }
+
 @Composable
+
 fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val vm: CustomizeViewModel = koinViewModel()
     val section by vm.section.collectAsStateWithLifecycle()
     val rows by vm.rows.collectAsStateWithLifecycle()
+    val allRows by vm.allRows.collectAsStateWithLifecycle()
     val hiddenChannels by vm.hiddenChannels.collectAsStateWithLifecycle()
     val hideNewCategories by vm.hideNewCategories.collectAsStateWithLifecycle()
     val currentSort by vm.currentSort.collectAsStateWithLifecycle()
@@ -91,6 +95,7 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     // "…" in the tool row (P10B): New categories and the PIN lock.
     var showMoreMenu by remember { mutableStateOf(false) }
     var restoringDefaults by remember { mutableStateOf(false) }
+    var confirmingHideAll by remember { mutableStateOf(false) }
     val restorePlaylist by vm.restorePlaylistName.collectAsStateWithLifecycle()
     val moreFocus = remember { FocusRequester() }
     val actionsFocus = remember { FocusRequester() }
@@ -119,7 +124,7 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     // Opener row for whichever dialog (new-category picker, rename) is open — restored on close so
     // focus doesn't always jump back to the Live TV section chip.
     var dialogReturn by tv.own.owntv.ui.components.rememberDialogFocusRestore(
-        anyDialogOpen = showNewCatPicker || showSortPicker || showFilterPicker || showMoreMenu || restoringDefaults || renaming != null || creatingCategory ||
+        anyDialogOpen = showNewCatPicker || showSortPicker || showFilterPicker || showMoreMenu || restoringDefaults || confirmingHideAll || renaming != null || creatingCategory ||
             deletingCategory != null || rangeEnd != null || editingPin != null,
     )
 
@@ -141,7 +146,7 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val rowFocusers = remember { mutableMapOf<String, FocusRequester>() }
     // LazyColumn items before the category rows (hidden-items header + hidden rows + "Categories"
     // header) — the offset that maps a category index to its LazyColumn item index.
-    val headerOffset = if (hiddenChannels.isNotEmpty()) hiddenChannels.size + 2 else 0
+    val headerOffset = if (hiddenChannels.isNotEmpty()) hiddenChannels.size + 4 else 3
 
     // Wait for the stored lock state before showing anything (no unlocked flash).
     if (!pinLock.loaded) return
@@ -227,6 +232,10 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             )
             Spacer(Modifier.weight(1f))
             tv.own.owntv.ui.stage.StageTool(
+                null, onClick = { dialogReturn = moreFocus; showMoreMenu = true },
+                icon = OwnTVIcon.MORE, boxed = true, modifier = Modifier.focusRequester(moreFocus),
+            )
+            tv.own.owntv.ui.stage.StageTool(
                 stringResource(R.string.settings_customize_sort_button, stringResource(if (currentSort == SettingsRepository.SortMode.PLAYLIST) R.string.content_provider else R.string.settings_sort_alpha)),
                 onClick = { dialogReturn = sortFocus; showSortPicker = true },
                 icon = OwnTVIcon.SORT, boxed = true, modifier = Modifier.focusRequester(sortFocus),
@@ -251,10 +260,6 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 stringResource(R.string.settings_customize_new_category),
                 onClick = { dialogReturn = newCatPillFocus; creatingCategory = true },
                 boxed = true, modifier = Modifier.focusRequester(newCatPillFocus),
-            )
-            tv.own.owntv.ui.stage.StageTool(
-                null, onClick = { dialogReturn = moreFocus; showMoreMenu = true },
-                icon = OwnTVIcon.MORE, boxed = true, modifier = Modifier.focusRequester(moreFocus),
             )
         },
         list = { pos ->
@@ -331,6 +336,24 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                         }
                     }
                     item { StageSettingsHeading(stringResource(R.string.settings_customize_categories), rows.size, first = hiddenChannels.isEmpty()) }
+                    item {
+                        StageSettingRow(
+                            icon = OwnTVIcon.EYE_OFF,
+                            title = stringResource(R.string.settings_customize_show_all_categories),
+                            desc = null,
+                            value = SettingValue.Action(stringResource(R.string.settings_customize_show)),
+                            onClick = { vm.setAllProviderCategoriesHidden(false) },
+                        )
+                    }
+                    item {
+                        StageSettingRow(
+                            icon = OwnTVIcon.EYE_OFF,
+                            title = stringResource(R.string.settings_customize_hide_all_categories),
+                            desc = null,
+                            value = SettingValue.Action(stringResource(R.string.settings_customize_hide)),
+                            onClick = { confirmingHideAll = true },
+                        )
+                    }
 
                     if (rows.isEmpty()) {
                         item { StageSettingsNote(stringResource(R.string.settings_customize_empty), null) }
@@ -393,6 +416,8 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 // Bulk rename over every listed category, as the items page has it (the long-press span
                 // stays). In ⋯ rather than the tool row: two more pills pushed ⋯ itself off the screen.
                 "BULK" to stringResource(R.string.settings_bulk_rename_title),
+                CategoryBulkAction.HIDE_ALL.name to stringResource(R.string.settings_customize_hide_all_categories),
+                CategoryBulkAction.SHOW_ALL.name to stringResource(R.string.settings_customize_show_all_categories),
                 "BULK_CLEANUP" to stringResource(R.string.settings_bulk_rename_auto_cleanup),
                 "NEW" to stringResource(
                     R.string.settings_customize_new_categories_button,
@@ -411,6 +436,8 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                     "BULK" -> { dialogReturn = moreFocus; vm.bulkRenameAll(autocleanup = false) }
                     "BULK_CLEANUP" -> { dialogReturn = moreFocus; vm.bulkRenameAll(autocleanup = true) }
                     "NEW" -> showNewCatPicker = true
+                    CategoryBulkAction.HIDE_ALL.name -> confirmingHideAll = true
+                    CategoryBulkAction.SHOW_ALL.name -> vm.setAllProviderCategoriesHidden(false)
                     "PIN_SET", "PIN_CHANGE" -> {
                         firstPin = ""; confirmPinStage = false; pinMismatch = false
                         editingPin = if (value == "PIN_SET") PinEdit.SET else PinEdit.CHANGE
@@ -422,6 +449,20 @@ fun CustomizeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             onDismiss = { showMoreMenu = false },
         )
     }
+
+    if (confirmingHideAll) {
+        PinConfirmDialog(
+            title = stringResource(R.string.settings_customize_hide_all_title),
+            message = stringResource(R.string.settings_customize_hide_all_message),
+            confirmLabel = stringResource(R.string.settings_customize_hide_all_confirm),
+            onConfirm = {
+                vm.setAllProviderCategoriesHidden(true)
+                confirmingHideAll = false
+            },
+            onDismiss = { confirmingHideAll = false },
+        )
+    }
+
 
     if (showNewCatPicker) {
         PickerDialog(
