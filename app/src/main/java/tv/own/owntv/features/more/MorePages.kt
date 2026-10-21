@@ -649,9 +649,9 @@ internal fun AboutPage(vm: MoreCountsViewModel, entry: FocusRequester, onOpenLan
     Column(Modifier.fillMaxSize().focusGroup()) {
         Row(horizontalArrangement = Arrangement.spacedBy(40.mpx), verticalAlignment = Alignment.CenterVertically) {
             // The app's own icon (150) and the #227 wordmark (300).
-            BrandMark(rememberAppliedIcon(), 150.mpx)
+            Image(painter = painterResource(R.drawable.jafplayer_logo), contentDescription = "JAFPlayer", modifier = Modifier.size(150.mpx))
             Column {
-                Wordmark(300.mpx)
+                Text("JAFPlayer", style = stageText(48, 800), color = Color(0xFFE3BC5C))
                 Row(Modifier.padding(top = 16.mpx), horizontalArrangement = Arrangement.spacedBy(14.mpx), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.settings_about_version, BuildConfig.VERSION_NAME), style = stageText(22, 700), color = StageColors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     // Only what a real check said: no tag before one has run.
@@ -677,22 +677,11 @@ internal fun AboutPage(vm: MoreCountsViewModel, entry: FocusRequester, onOpenLan
         }
         Text(stringResource(R.string.more_about_description), style = stageText(18, 500).copy(lineHeight = 29.mpxSp), color = stageTone(Color(0xFFD3DCD8), StageColors.Body),
             modifier = Modifier.padding(top = 26.mpx).widthIn(max = 860.mpx))
+        Text("Based on the open-source OwnTV project (github.com/ahXN00/OwnTV). Licensed under GPLv3.",
+            style = stageText(15, 500), color = StageColors.Muted,
+            modifier = Modifier.padding(top = 8.mpx))
         Text(stringResource(R.string.settings_contributions), style = stageText(16, 500), color = StageColors.Dim,
             modifier = Modifier.padding(top = 10.mpx, bottom = 24.mpx).widthIn(max = 860.mpx))
-        StageTile(Modifier.width(640.mpx)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(20.mpx), verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(R.drawable.telegram_qr),
-                    contentDescription = stringResource(R.string.settings_telegram_qr),
-                    modifier = Modifier.size(150.mpx).clip(RoundedCornerShape(14.mpx)).background(Color.White),
-                )
-                Column {
-                    Text(stringResource(R.string.settings_join_telegram), style = stageText(22, 800), color = StageColors.Text)
-                    Text(TELEGRAM_LINK, style = stageText(17, 500), color = accent, modifier = Modifier.padding(top = 4.mpx))
-                    Text(stringResource(R.string.more_about_scan), style = stageText(15.5f, 500), color = StageColors.Muted, modifier = Modifier.padding(top = 8.mpx))
-                }
-            }
-        }
         Row(Modifier.padding(top = 22.mpx), horizontalArrangement = Arrangement.spacedBy(10.mpx)) {
             // The link is for reading: a TV has no browser to open it in.
             Row(
